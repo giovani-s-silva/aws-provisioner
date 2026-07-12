@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<ruleset name="AwsProvisioner">
+    <description>Coding standard for this project: PSR-12, checked against src/ and bin/.</description>
+
+    <file>src</file>
+    <file>bin</file>
+
+    <arg name="colors"/>
+    <arg value="p"/>
+
+    <rule ref="PSR12"/>
+</ruleset>

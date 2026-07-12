@@ -1,0 +1,20 @@
+{
+    "name": "giovani-s-silva/aws-provisioner",
+    "description": "CLI tool to provision a personal AWS environment (VPC, networking, load balancer, S3, ACM certificates and DNS) from a single command.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1",
+        "aws/aws-sdk-php": "^3.2",
+        "vlucas/phpdotenv": "^5.6",
+        "symfony/console": "^6.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "AwsProvisioner\\": "src/"
+        }
+    },
+    "require-dev": {
+        "squizlabs/php_codesniffer": "^4.0"
+    }
+}

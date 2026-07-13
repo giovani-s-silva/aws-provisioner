@@ -15,9 +15,9 @@ return [
     'region' => 'sa-east-1',
 
     // Como a rede é exposta à internet. Hoje só "public-private-ipv4" está implementado
-    // (subnet pública + privada, NAT Gateway, ALB com IPv4 público — o modelo clássico).
-    // Perfis futuros, sem custo de IP público (Load Balancer sem IPv4, ou tudo privado
-    // atrás de um CloudFront VPC Origin), entram depois sem quebrar esta chave.
+    // (subnet pública + privada, NAT Gateway opcional, ALB com IPv4 público — o modelo
+    // clássico). "private-with-cloudfront" (ALB 100% privado, CloudFront na frente via
+    // VPC Origin — sem custo de IP público, mais seguro) entra depois sem quebrar esta chave.
     'networkProfile' => 'public-private-ipv4',
 
     'network' => [
@@ -89,9 +89,13 @@ return [
         'db' => ['name' => "rt-{$projectName}-db"],
     ],
 
-    // Cada domínio aponta pro provider de DNS que vai validar o certificado ACM.
+    // Deixe vazio pra não provisionar ALB/certificado nenhum (ex.: domínio ainda não está
+    // pronto no seu provedor de DNS, ou o TLS vai ser resolvido em outro lugar, tipo CloudFront).
+    // 'dnsProvider' escolhe onde validar cada domínio. Hoje só 'route53' está implementado —
+    // o domínio PRECISA já existir como Hosted Zone lá (a ferramenta não registra domínios
+    // nem transfere DNS, isso é sempre manual, fora da AWS). 'cloudflare' é valor reservado
+    // pra quando essa segunda opção for implementada.
     'acmDomains' => [
         // 'example.com' => ['dnsProvider' => 'route53', 'subdomain' => '*'],
-        // 'example.net' => ['dnsProvider' => 'cloudflare', 'subdomain' => '*'],
     ],
 ];

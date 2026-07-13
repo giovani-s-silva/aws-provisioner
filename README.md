@@ -1,6 +1,6 @@
 # AWS Provisioner
 
-Command-line PHP tool to provision a repeatable, idempotent AWS network environment (VPC, public/private subnets, security groups, load balancer, ACM certificates and S3 bucket) from a single command — no more clicking through the Console in the right order.
+Command-line PHP tool to provision a repeatable, idempotent AWS network environment — VPC, public/private subnets, security groups, and an Application Load Balancer with an ACM/Route 53 certificate — from a single command, no more clicking through the Console in the right order.
 
 ## Status
 
@@ -11,8 +11,7 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `AvailabilityZoneResolver` — validates the subnet count against the region's real AZs
 - [x] `SecurityGroupProvisioner` / `NetworkAclProvisioner` — idempotent, rules driven by `config/settings.php`
 - [x] `SubnetProvisioner` / `RouteTableProvisioner` — idempotent, includes the Internet Gateway route for public subnets
-- [ ] Load Balancer (ALB) + ACM certificate
-- [ ] S3 bucket
+- [ ] Load Balancer (ALB) + ACM certificate (Route 53 DNS validation)
 - [ ] Unified CLI (`bin/provision.php`) orchestrating everything in the right order
 - [ ] Alternative network profiles (no public IPv4 / CloudFront in front of a private network)
 
@@ -21,6 +20,7 @@ Actively under construction. Nothing here should be considered production-ready 
 - PHP >= 8.1
 - Composer 2.x
 - An AWS account (a new/test account is recommended while the project is under development)
+- Only if you want the Load Balancer + ACM certificate step: a domain already set up as a Route 53 Hosted Zone. This tool does not register domains or move DNS delegation — that's always a manual, one-time step outside AWS. Leave `acmDomains` empty in `config/settings.php` to skip this step entirely and provision just the network.
 
 ## Installation
 
@@ -98,8 +98,7 @@ src/
 ├── Config/               Loads .env + settings.php
 ├── Network/              VPC, Security Groups, ACLs, Subnets, Route Tables, Peering
 ├── LoadBalancer/         Application Load Balancer
-├── Storage/              S3 bucket
-├── Certificates/         ACM + DNS validation (Route 53 or Cloudflare)
+├── Certificates/         ACM + Route 53 DNS validation
 └── Provisioning/         Orchestrates the execution order between the steps above
 ```
 

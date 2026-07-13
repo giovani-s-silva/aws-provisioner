@@ -83,7 +83,9 @@ Step by step in the AWS Console: **IAM → Users → Create user** → no consol
 
 ## Usage
 
-Still under construction — the unified CLI (`php bin/provision.php`) will be the single entry point once every provisioner is ready. For now, each class in `src/` can be exercised on its own.
+Still under construction — the unified CLI (`php bin/provision.php`) will be the single entry point once every provisioner is ready and orchestrated in the right order.
+
+In the meantime, `bin/verify-*.php` (`verify-vpc.php`, `verify-network.php`, `verify-subnets.php`) are **temporary scaffolding**, used to validate each provisioner against a real AWS account while it's being built. They will be removed once `bin/provision.php` covers the same ground — they are not the intended way to use this tool long-term.
 
 ## Architecture
 

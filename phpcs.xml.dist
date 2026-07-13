@@ -9,4 +9,10 @@
     <arg value="p"/>
 
     <rule ref="PSR12"/>
+
+    <!-- bin/ scripts are entry points: declaring a small local helper and running
+         procedural logic in the same file is expected there, not a code smell. -->
+    <rule ref="PSR1.Files.SideEffects">
+        <exclude-pattern>bin/*</exclude-pattern>
+    </rule>
 </ruleset>

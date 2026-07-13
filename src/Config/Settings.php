@@ -84,6 +84,16 @@ final class Settings
         return $this->preferences['network'] ?? [];
     }
 
+    public function securityGroupPreferences(): array
+    {
+        return $this->preferences['securityGroups'] ?? [];
+    }
+
+    public function networkAclPreferences(): array
+    {
+        return $this->preferences['networkAcls'] ?? [];
+    }
+
     public function acmDomainList(): array
     {
         return $this->preferences['acmDomains'] ?? [];

@@ -9,7 +9,7 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] Project structure and autoloading (PSR-4)
 - [x] `VpcProvisioner` — creates VPC + Internet Gateway, idempotent
 - [x] `AvailabilityZoneResolver` — validates the subnet count against the region's real AZs
-- [ ] Security Groups / Network ACLs
+- [x] `SecurityGroupProvisioner` / `NetworkAclProvisioner` — idempotent, rules driven by `config/settings.php`
 - [ ] Subnets + Route Tables
 - [ ] Load Balancer (ALB) + ACM certificate
 - [ ] S3 bucket
@@ -38,7 +38,7 @@ Neither file is version-controlled — each keeps its own local copy.
 
 **Never use your AWS root account credentials here.** Create a dedicated IAM user, with programmatic access only (Access Key), and attach a policy with the minimum permissions required — not `AdministratorAccess`.
 
-The policy below covers what is implemented so far (VPC and Internet Gateway creation). It will grow as more parts are implemented — this README is updated alongside the code.
+The policy below covers what is implemented so far (VPC, Internet Gateway, Security Groups and Network ACLs). It will grow as more parts are implemented — this README is updated alongside the code.
 
 ```json
 {
@@ -55,7 +55,13 @@ The policy below covers what is implemented so far (VPC and Internet Gateway cre
                 "ec2:DescribeInternetGateways",
                 "ec2:CreateInternetGateway",
                 "ec2:AttachInternetGateway",
-                "ec2:CreateTags"
+                "ec2:CreateTags",
+                "ec2:DescribeSecurityGroups",
+                "ec2:CreateSecurityGroup",
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:DescribeNetworkAcls",
+                "ec2:CreateNetworkAcl",
+                "ec2:CreateNetworkAclEntry"
             ],
             "Resource": "*"
         }

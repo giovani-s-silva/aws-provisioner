@@ -82,6 +82,13 @@ return [
         ],
     ],
 
+    // A tabela 'web' recebe a rota 0.0.0.0/0 pro Internet Gateway (é o que torna a
+    // subnet pública de fato); a 'db' fica sem rota de saída pra internet por padrão.
+    'routeTables' => [
+        'web' => ['name' => "rt-{$projectName}-web"],
+        'db' => ['name' => "rt-{$projectName}-db"],
+    ],
+
     // Cada domínio aponta pro provider de DNS que vai validar o certificado ACM.
     'acmDomains' => [
         // 'example.com' => ['dnsProvider' => 'route53', 'subdomain' => '*'],

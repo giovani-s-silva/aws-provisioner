@@ -94,6 +94,11 @@ final class Settings
         return $this->preferences['networkAcls'] ?? [];
     }
 
+    public function routeTablePreferences(): array
+    {
+        return $this->preferences['routeTables'] ?? [];
+    }
+
     public function acmDomainList(): array
     {
         return $this->preferences['acmDomains'] ?? [];

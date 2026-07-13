@@ -10,7 +10,7 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `VpcProvisioner` — creates VPC + Internet Gateway, idempotent
 - [x] `AvailabilityZoneResolver` — validates the subnet count against the region's real AZs
 - [x] `SecurityGroupProvisioner` / `NetworkAclProvisioner` — idempotent, rules driven by `config/settings.php`
-- [ ] Subnets + Route Tables
+- [x] `SubnetProvisioner` / `RouteTableProvisioner` — idempotent, includes the Internet Gateway route for public subnets
 - [ ] Load Balancer (ALB) + ACM certificate
 - [ ] S3 bucket
 - [ ] Unified CLI (`bin/provision.php`) orchestrating everything in the right order
@@ -38,7 +38,7 @@ Neither file is version-controlled — each keeps its own local copy.
 
 **Never use your AWS root account credentials here.** Create a dedicated IAM user, with programmatic access only (Access Key), and attach a policy with the minimum permissions required — not `AdministratorAccess`.
 
-The policy below covers what is implemented so far (VPC, Internet Gateway, Security Groups and Network ACLs). It will grow as more parts are implemented — this README is updated alongside the code.
+The policy below covers what is implemented so far (VPC, Internet Gateway, Security Groups, Network ACLs, Subnets and Route Tables). It will grow as more parts are implemented — this README is updated alongside the code.
 
 ```json
 {
@@ -61,7 +61,15 @@ The policy below covers what is implemented so far (VPC, Internet Gateway, Secur
                 "ec2:AuthorizeSecurityGroupIngress",
                 "ec2:DescribeNetworkAcls",
                 "ec2:CreateNetworkAcl",
-                "ec2:CreateNetworkAclEntry"
+                "ec2:CreateNetworkAclEntry",
+                "ec2:ReplaceNetworkAclAssociation",
+                "ec2:DescribeSubnets",
+                "ec2:CreateSubnet",
+                "ec2:ModifySubnetAttribute",
+                "ec2:DescribeRouteTables",
+                "ec2:CreateRouteTable",
+                "ec2:AssociateRouteTable",
+                "ec2:CreateRoute"
             ],
             "Resource": "*"
         }

@@ -96,7 +96,7 @@ config/settings.php       Non-secret preferences per account/project (names, CID
 src/
 ├── Aws/                  Builds the AWS SDK clients
 ├── Config/               Loads .env + settings.php
-├── Network/              VPC, Security Groups, ACLs, Subnets, Route Tables, Peering
+├── Network/              VPC, Security Groups, ACLs, Subnets, Route Tables
 ├── LoadBalancer/         Application Load Balancer
 ├── Certificates/         ACM + Route 53 DNS validation
 └── Provisioning/         Orchestrates the execution order between the steps above

@@ -156,6 +156,7 @@ $orchestrator->addStep('route-tables', function () use (
     $vpcProvisioner,
     $vpcName,
     $igwName,
+    $subnetProvisioner,
     $routeTableProvisioner,
     $settings,
 ) {
@@ -163,6 +164,7 @@ $orchestrator->addStep('route-tables', function () use (
     $context->internetGatewayId ??= $vpcProvisioner->createAndAttachInternetGateway($context->vpcId, $igwName);
 
     $vpcPreferences = $settings->vpcPreferences();
+    $subnetsPerTier = $vpcPreferences['subnetsPerTier'] ?? 2;
 
     foreach (['web', 'db'] as $tier) {
         $tierConfig = $vpcPreferences['tiers'][$tier] ?? null;
@@ -173,8 +175,21 @@ $orchestrator->addStep('route-tables', function () use (
 
         $subnetIds = $context->subnetIds[$tier] ?? [];
         if ($subnetIds === []) {
-            throw new \RuntimeException("No subnets known for tier '{$tier}'. Run the subnets step first.");
+            // This step may run on its own, in a separate invocation from 'subnets' — look up
+            // subnets already created earlier instead of assuming this run made them.
+            for ($index = 0; $index < $subnetsPerTier; $index++) {
+                $subnetName = "sub-{$settings->projectName()}-{$tier}-" . ($index + 1);
+                $subnetId = $subnetProvisioner->findByName($context->vpcId, $subnetName);
+                if ($subnetId !== null) {
+                    $subnetIds[] = $subnetId;
+                }
+            }
         }
+
+        if ($subnetIds === []) {
+            throw new \RuntimeException("No subnets found for tier '{$tier}'. Run the subnets step first.");
+        }
+        $context->subnetIds[$tier] = $subnetIds;
 
         $routeTableId = $routeTableProvisioner->create($context->vpcId, $routeTableConfig['name']);
         $context->routeTableIds[$tier] = $routeTableId;

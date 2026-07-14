@@ -16,6 +16,7 @@ use AwsProvisioner\Network\SubnetProvisioner;
 use AwsProvisioner\Network\VpcProvisioner;
 use AwsProvisioner\Provisioning\Orchestrator;
 use AwsProvisioner\Provisioning\ProvisioningContext;
+use AwsProvisioner\Support\CidrAllocator;
 use AwsProvisioner\Support\PublicIp;
 use Symfony\Component\Console\Application;
 
@@ -117,7 +118,10 @@ $orchestrator->addStep('subnets', function () use (
 
     $vpcPreferences = $settings->vpcPreferences();
     $subnetsPerTier = $vpcPreferences['subnetsPerTier'] ?? 2;
+    $subnetMaskBits = $vpcPreferences['subnetMaskBits'] ?? 24;
     $zones = (new AvailabilityZoneResolver($ec2))->resolve($subnetsPerTier);
+
+    $tierOffset = 0;
 
     foreach (['web', 'db'] as $tier) {
         $tierConfig = $vpcPreferences['tiers'][$tier] ?? null;
@@ -135,12 +139,20 @@ $orchestrator->addStep('subnets', function () use (
         }
         $context->networkAclIds[$tier] = $networkAclId;
 
+        $cidrBlocks = CidrAllocator::allocate(
+            $vpcPreferences['cidrBlock'],
+            $subnetsPerTier,
+            $subnetMaskBits,
+            $tierOffset,
+        );
+        $tierOffset += $subnetsPerTier;
+
         $subnetIds = [];
         foreach ($zones as $index => $availabilityZone) {
             $subnetName = "sub-{$settings->projectName()}-{$tier}-" . ($index + 1);
             $subnetIds[] = $subnetProvisioner->create(
                 $context->vpcId,
-                $tierConfig['cidrBlocks'][$index],
+                $cidrBlocks[$index],
                 $availabilityZone,
                 $tierConfig['mapPublicIpOnLaunch'],
                 $networkAclId,

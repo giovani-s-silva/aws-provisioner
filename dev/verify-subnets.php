@@ -10,6 +10,7 @@ use AwsProvisioner\Network\NetworkAclProvisioner;
 use AwsProvisioner\Network\RouteTableProvisioner;
 use AwsProvisioner\Network\SubnetProvisioner;
 use AwsProvisioner\Network\VpcProvisioner;
+use AwsProvisioner\Support\CidrAllocator;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -51,6 +52,9 @@ $networkAclProvisioner = new NetworkAclProvisioner($ec2);
 $subnetProvisioner = new SubnetProvisioner($ec2);
 $routeTableProvisioner = new RouteTableProvisioner($ec2);
 
+$subnetMaskBits = $vpcPreferences['subnetMaskBits'] ?? 24;
+$tierOffset = 0;
+
 foreach (['web', 'db'] as $tier) {
     $tierConfig = $vpcPreferences['tiers'][$tier] ?? null;
     $naclConfig = $settings->networkAclPreferences()[$tier] ?? null;
@@ -66,9 +70,12 @@ foreach (['web', 'db'] as $tier) {
         exit(1);
     }
 
+    $cidrBlocks = CidrAllocator::allocate($vpcPreferences['cidrBlock'], $subnetsPerTier, $subnetMaskBits, $tierOffset);
+    $tierOffset += $subnetsPerTier;
+
     $subnetIds = [];
     foreach ($zones as $index => $availabilityZone) {
-        $cidrBlock = $tierConfig['cidrBlocks'][$index];
+        $cidrBlock = $cidrBlocks[$index];
         $subnetName = "sub-{$projectName}-{$tier}-" . ($index + 1);
 
         $subnetId = $subnetProvisioner->create(

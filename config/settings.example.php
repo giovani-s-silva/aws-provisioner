@@ -29,13 +29,17 @@ return [
         // do que existe, a ferramenta avisa em vez de falhar no meio da criação.
         'subnetsPerTier' => 2,
 
+        // Tamanho de cada subnet (/24 = 256 IPs, de sobra pra maioria dos casos).
+        // Os blocos CIDR de cada subnet são calculados automaticamente a partir de
+        // 'cidrBlock' acima — não precisa listar manualmente, funciona pra 1, 3, 6
+        // ou quantas AZs você configurar em 'subnetsPerTier'.
+        'subnetMaskBits' => 24,
+
         'tiers' => [
             'web' => [
-                'cidrBlocks' => ['10.0.10.0/24', '10.0.11.0/24', '10.0.12.0/24'],
                 'mapPublicIpOnLaunch' => true,
             ],
             'db' => [
-                'cidrBlocks' => ['10.0.13.0/24', '10.0.14.0/24', '10.0.15.0/24'],
                 'mapPublicIpOnLaunch' => false,
             ],
         ],

@@ -23,13 +23,13 @@ $clientFactory = new ClientFactory(
 
 $ec2 = $clientFactory->ec2();
 
-echo "Região: {$settings->region()}\n";
+echo "Region: {$settings->region()}\n";
 
 $vpcPreferences = $settings->vpcPreferences();
 $subnetsPerTier = $vpcPreferences['subnetsPerTier'] ?? 2;
 
 $zones = (new AvailabilityZoneResolver($ec2))->resolve($subnetsPerTier);
-echo 'AZs disponíveis para uso: ' . implode(', ', $zones) . "\n";
+echo 'Availability Zones in use: ' . implode(', ', $zones) . "\n";
 
 $projectName = $settings->projectName();
 $vpcName = "vpc-{$projectName}";
@@ -38,10 +38,10 @@ $cidrBlock = $vpcPreferences['cidrBlock'] ?? '10.0.0.0/16';
 $vpcProvisioner = new VpcProvisioner($ec2);
 
 $vpcId = $vpcProvisioner->create($vpcName, $cidrBlock);
-echo "VPC pronta: {$vpcId} ({$vpcName})\n";
+echo "VPC ready: {$vpcId} ({$vpcName})\n";
 
 $igwName = "{$projectName}-ig";
 $igwId = $vpcProvisioner->createAndAttachInternetGateway($vpcId, $igwName);
-echo "Internet Gateway pronto: {$igwId} ({$igwName})\n";
+echo "Internet Gateway ready: {$igwId} ({$igwName})\n";
 
-echo "\nOK. Rode este script de novo — os IDs acima devem se repetir (nada duplicado).\n";
+echo "\nOK. Run this script again — the IDs above should stay the same (nothing duplicated).\n";

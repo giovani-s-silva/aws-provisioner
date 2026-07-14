@@ -120,15 +120,15 @@ if ($vpcId === null) {
     fwrite(STDERR, "VPC '{$vpcName}' not found. Run bin/verify-vpc.php first.\n");
     exit(1);
 }
-echo "Usando VPC existente: {$vpcId} ({$vpcName})\n";
+echo "Using existing VPC: {$vpcId} ({$vpcName})\n";
 
 $myIp = PublicIp::resolve($settings->caBundlePath());
-echo "Seu IP público: {$myIp}\n\n";
+echo "Your public IP: {$myIp}\n\n";
 
 $securityGroupProvisioner = new SecurityGroupProvisioner($ec2);
 $groupIdsByTier = [];
 
-// 'web' antes de 'db' de propósito: a regra do db referencia o security group do web.
+// 'web' before 'db' on purpose: the db rule references the web security group.
 foreach (['web', 'db'] as $tier) {
     $config = $settings->securityGroupPreferences()[$tier] ?? null;
     if ($config === null) {
@@ -141,7 +141,7 @@ foreach (['web', 'db'] as $tier) {
     $permissions = resolveIngressPermissions($config['ingress'], $groupIdsByTier, $myIp);
     $securityGroupProvisioner->authorizeIngress($groupId, $permissions);
 
-    echo "Security group '{$tier}' pronto: {$groupId} ({$config['name']})\n";
+    echo "Security group '{$tier}' ready: {$groupId} ({$config['name']})\n";
 }
 
 echo "\n";
@@ -161,7 +161,7 @@ foreach (['web', 'db'] as $tier) {
         $networkAclProvisioner->addEntry($networkAclId, $entry);
     }
 
-    echo "Network ACL '{$tier}' pronta: {$networkAclId} ({$config['name']}), " . count($entries) . " regra(s)\n";
+    echo "Network ACL '{$tier}' ready: {$networkAclId} ({$config['name']}), " . count($entries) . " rule(s)\n";
 }
 
-echo "\nOK. Rode este script de novo — nada deve ser duplicado (idempotência).\n";
+echo "\nOK. Run this script again — nothing should be duplicated (idempotency).\n";

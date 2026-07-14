@@ -36,7 +36,7 @@ if ($vpcId === null) {
     fwrite(STDERR, "VPC '{$vpcName}' not found. Run bin/verify-vpc.php first.\n");
     exit(1);
 }
-echo "Usando VPC existente: {$vpcId} ({$vpcName})\n";
+echo "Using existing VPC: {$vpcId} ({$vpcName})\n";
 
 $igwName = "{$projectName}-ig";
 $internetGatewayId = $vpcProvisioner->createAndAttachInternetGateway($vpcId, $igwName);
@@ -46,7 +46,7 @@ $vpcPreferences = $settings->vpcPreferences();
 $subnetsPerTier = $vpcPreferences['subnetsPerTier'] ?? 2;
 
 $zones = (new AvailabilityZoneResolver($ec2))->resolve($subnetsPerTier);
-echo 'AZs em uso: ' . implode(', ', $zones) . "\n\n";
+echo 'Availability Zones in use: ' . implode(', ', $zones) . "\n\n";
 
 $networkAclProvisioner = new NetworkAclProvisioner($ec2);
 $subnetProvisioner = new SubnetProvisioner($ec2);
@@ -88,7 +88,7 @@ foreach (['web', 'db'] as $tier) {
         );
 
         $subnetIds[] = $subnetId;
-        echo "Subnet '{$tier}' #" . ($index + 1) . ": {$subnetId} ({$subnetName}) em {$availabilityZone}\n";
+        echo "Subnet '{$tier}' #" . ($index + 1) . ": {$subnetId} ({$subnetName}) in {$availabilityZone}\n";
     }
 
     $routeTableId = $routeTableProvisioner->create($vpcId, $routeTableConfig['name']);
@@ -101,8 +101,8 @@ foreach (['web', 'db'] as $tier) {
         $routeTableProvisioner->associateSubnet($routeTableId, $subnetId);
     }
 
-    echo "Route table '{$tier}' pronta: {$routeTableId} ({$routeTableConfig['name']}), "
-        . count($subnetIds) . " subnet(s) associada(s)\n\n";
+    echo "Route table '{$tier}' ready: {$routeTableId} ({$routeTableConfig['name']}), "
+        . count($subnetIds) . " subnet(s) associated\n\n";
 }
 
-echo "OK. Rode este script de novo — nada deve ser duplicado (idempotência).\n";
+echo "OK. Run this script again — nothing should be duplicated (idempotency).\n";

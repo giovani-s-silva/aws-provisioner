@@ -25,4 +25,8 @@ final class ProvisioningContext
 
     /** @var array<string, string> tier name => route table ID */
     public array $routeTableIds = [];
+
+    public ?string $loadBalancerArn = null;
+
+    public ?string $targetGroupArn = null;
 }

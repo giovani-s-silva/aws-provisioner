@@ -93,8 +93,19 @@ return [
         'db' => ['name' => "rt-{$projectName}-db"],
     ],
 
-    // Leave empty to skip provisioning any ALB/certificate (e.g. the domain isn't ready
-    // at your DNS provider yet, or TLS will be handled elsewhere, like CloudFront).
+    // Set 'enabled' to false to provision only the network layer, with no load balancer at
+    // all. When true, whether it gets a public IP or stays fully private follows
+    // 'networkProfile' above ('public-private-ipv4' -> internet-facing, 'private-with-cloudfront'
+    // -> internal) — there's no separate public/private switch here, so the two settings can't
+    // end up contradicting each other.
+    'loadBalancer' => [
+        'enabled' => true,
+        'name' => "lb-{$projectName}",
+    ],
+
+    // Leave empty to skip requesting any certificate (e.g. the domain isn't ready at your
+    // DNS provider yet, or TLS will be handled elsewhere, like CloudFront) — the load balancer
+    // above still gets provisioned with just the HTTP listener, no HTTPS.
     // 'dnsProvider' picks where each domain gets validated. Only 'route53' is implemented
     // today — the domain MUST already exist as a Hosted Zone there (this tool doesn't
     // register domains or move DNS delegation, that's always manual, outside AWS).

@@ -79,6 +79,11 @@ final class Settings
         return $this->preferences['projectName'] ?? 'myapp';
     }
 
+    public function networkProfile(): string
+    {
+        return $this->preferences['networkProfile'] ?? 'public-private-ipv4';
+    }
+
     public function vpcPreferences(): array
     {
         return $this->preferences['network'] ?? [];
@@ -97,6 +102,11 @@ final class Settings
     public function routeTablePreferences(): array
     {
         return $this->preferences['routeTables'] ?? [];
+    }
+
+    public function loadBalancerPreferences(): array
+    {
+        return $this->preferences['loadBalancer'] ?? ['enabled' => false];
     }
 
     public function acmDomainList(): array

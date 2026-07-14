@@ -38,7 +38,7 @@ Neither file is version-controlled — each keeps its own local copy.
 
 **Never use your AWS root account credentials here.** Create a dedicated IAM user, with programmatic access only (Access Key), and attach a policy with the minimum permissions required — not `AdministratorAccess`.
 
-The policy below covers what is implemented so far (VPC, Internet Gateway, Security Groups, Network ACLs, Subnets and Route Tables). It will grow as more parts are implemented — this README is updated alongside the code.
+The policy below covers what is implemented so far (VPC, Internet Gateway, Security Groups, Network ACLs, Subnets, Route Tables, and the Application Load Balancer). It will grow as more parts are implemented — this README is updated alongside the code.
 
 ```json
 {
@@ -69,15 +69,52 @@ The policy below covers what is implemented so far (VPC, Internet Gateway, Secur
                 "ec2:DescribeRouteTables",
                 "ec2:CreateRouteTable",
                 "ec2:AssociateRouteTable",
-                "ec2:CreateRoute"
+                "ec2:CreateRoute",
+                "ec2:DescribeInstances",
+                "ec2:DescribeAccountAttributes",
+                "ec2:DescribeAddresses",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeVpcClassicLink",
+                "ec2:DescribeClassicLinkInstances",
+                "ec2:GetSecurityGroupsForVpc",
+                "ec2:DescribeVpcPeeringConnections"
             ],
             "Resource": "*"
+        },
+        {
+            "Sid": "LoadBalancerProvisioning",
+            "Effect": "Allow",
+            "Action": [
+                "elasticloadbalancing:DescribeTargetGroups",
+                "elasticloadbalancing:CreateTargetGroup",
+                "elasticloadbalancing:DescribeLoadBalancers",
+                "elasticloadbalancing:CreateLoadBalancer",
+                "elasticloadbalancing:DescribeListeners",
+                "elasticloadbalancing:CreateListener",
+                "elasticloadbalancing:RegisterTargets"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "ElbServiceLinkedRole",
+            "Effect": "Allow",
+            "Action": "iam:CreateServiceLinkedRole",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "iam:AWSServiceName": "elasticloadbalancing.amazonaws.com"
+                }
+            }
         }
     ]
 }
 ```
 
 > Why `Resource: "*"` even under "least privilege"? EC2 network creation actions (`CreateVpc`, `CreateInternetGateway`, etc.) don't support restricting to a specific ARN — the resource doesn't exist yet at authorization time. AWS recommends `*` for this group of actions and using tags/conditions to restrict what can actually be restricted.
+
+> Why `iam:CreateServiceLinkedRole`? The very first time an Application Load Balancer is created in an account, AWS needs to create the `AWSServiceRoleForElasticLoadBalancing` service-linked role so ELB can manage resources (like network interfaces) on your behalf — `CreateLoadBalancer` fails with `AccessDenied` without it. The `Condition` restricts this permission to only that specific service-linked role, following the exact pattern from AWS's own `ElasticLoadBalancingFullAccess` managed policy.
+
+> Why the extra `ec2:Describe*` actions (`DescribeAccountAttributes`, `DescribeAddresses`, `DescribeNetworkInterfaces`, etc.)? `CreateLoadBalancer` performs several read-only EC2 checks internally (account limits, existing network interfaces, VPC peering, ClassicLink) before creating anything — these show up as separate `AccessDenied` errors one at a time if missing. This list matches AWS's own `ElasticLoadBalancingFullAccess` managed policy, minus the parts unrelated to this tool (Cognito authentication on the ALB, Outposts CoIP pools).
 
 Step by step in the AWS Console: **IAM → Users → Create user** → no console access, just "Access key - Programmatic access" → **Attach policy directly** → paste the JSON above as an inline policy → generate the Access Key and paste it into `.env`.
 
@@ -89,7 +126,7 @@ php bin/provision.php subnets       # runs just one step (and whatever it needs 
 php bin/provision.php --dry-run     # prints the steps that would run, without calling AWS
 ```
 
-Steps implemented so far, in execution order: `vpc`, `internet-gateway`, `security-groups`, `network-acls`, `subnets`, `route-tables`. The Load Balancer and ACM/Route 53 steps are not wired in yet (see Status above).
+Steps implemented so far, in execution order: `vpc`, `internet-gateway`, `security-groups`, `network-acls`, `subnets`, `route-tables`, `load-balancer` (only registered when `loadBalancer.enabled` is true in `config/settings.php`). The `load-balancer` step provisions the ALB and an HTTP->HTTPS redirect, but no HTTPS listener yet — that needs a certificate, which the ACM/Route 53 step will provide once it's wired in (see Status above).
 
 `dev/verify-*.php` are separate, standalone scripts kept around on purpose for isolated debugging of a single provisioner against a real AWS account without going through the full CLI — they are not part of the tool's normal usage.
 

@@ -6,6 +6,7 @@ declare(strict_types=1);
 use AwsProvisioner\Aws\ClientFactory;
 use AwsProvisioner\Config\Settings;
 use AwsProvisioner\Console\ProvisionCommand;
+use AwsProvisioner\LoadBalancer\LoadBalancerProvisioner;
 use AwsProvisioner\Network\AvailabilityZoneResolver;
 use AwsProvisioner\Network\NetworkAclProvisioner;
 use AwsProvisioner\Network\NetworkAclRuleBuilder;
@@ -215,6 +216,93 @@ $orchestrator->addStep('route-tables', function () use (
         }
     }
 });
+
+$loadBalancerPreferences = $settings->loadBalancerPreferences();
+
+if ($loadBalancerPreferences['enabled'] ?? false) {
+    $loadBalancerProvisioner = new LoadBalancerProvisioner($clientFactory->elasticLoadBalancingV2());
+
+    $orchestrator->addStep('load-balancer', function () use (
+        $context,
+        $vpcProvisioner,
+        $vpcName,
+        $securityGroupProvisioner,
+        $subnetProvisioner,
+        $loadBalancerProvisioner,
+        $loadBalancerPreferences,
+        $settings,
+        $ec2,
+    ) {
+        $context->vpcId ??= $vpcProvisioner->findByName($vpcName);
+
+        // The public tier's subnets/security group host the load balancer. An 'internal' scheme
+        // (private-with-cloudfront profile) would use a different tier — not built yet.
+        $tier = 'web';
+        $projectName = $settings->projectName();
+        $subnetsPerTier = $settings->vpcPreferences()['subnetsPerTier'] ?? 2;
+
+        $securityGroupConfig = $settings->securityGroupPreferences()[$tier] ?? null;
+        if ($securityGroupConfig === null) {
+            throw new \RuntimeException("No security group configured for tier '{$tier}'.");
+        }
+
+        $securityGroupId = $context->securityGroupIds[$tier]
+            ?? $securityGroupProvisioner->findByName($securityGroupConfig['name']);
+        if ($securityGroupId === null) {
+            throw new \RuntimeException(
+                "Security group '{$securityGroupConfig['name']}' not found. Run the security-groups step first."
+            );
+        }
+
+        $subnetIds = $context->subnetIds[$tier] ?? [];
+        if ($subnetIds === []) {
+            for ($index = 0; $index < $subnetsPerTier; $index++) {
+                $subnetName = "sub-{$projectName}-{$tier}-" . ($index + 1);
+                $subnetId = $subnetProvisioner->findByName($context->vpcId, $subnetName);
+                if ($subnetId !== null) {
+                    $subnetIds[] = $subnetId;
+                }
+            }
+        }
+        if ($subnetIds === []) {
+            throw new \RuntimeException("No subnets found for tier '{$tier}'. Run the subnets step first.");
+        }
+
+        $scheme = $settings->networkProfile() === 'private-with-cloudfront' ? 'internal' : 'internet-facing';
+
+        $targetGroupArn = $loadBalancerProvisioner->createTargetGroup(
+            "{$loadBalancerPreferences['name']}-tg",
+            $context->vpcId,
+        );
+        $loadBalancerArn = $loadBalancerProvisioner->create(
+            $loadBalancerPreferences['name'],
+            $subnetIds,
+            [$securityGroupId],
+            $scheme,
+        );
+        $loadBalancerProvisioner->ensureHttpToHttpsRedirect($loadBalancerArn);
+
+        $context->loadBalancerArn = $loadBalancerArn;
+        $context->targetGroupArn = $targetGroupArn;
+
+        // Best-effort: register whatever EC2 instances already exist in this VPC. Fine if there are none yet.
+        $instancesResult = $ec2->describeInstances([
+            'Filters' => [
+                ['Name' => 'vpc-id', 'Values' => [$context->vpcId]],
+                ['Name' => 'instance-state-name', 'Values' => ['running']],
+            ],
+        ]);
+
+        $instanceIds = [];
+        foreach ($instancesResult['Reservations'] as $reservation) {
+            foreach ($reservation['Instances'] as $instance) {
+                $instanceIds[] = $instance['InstanceId'];
+            }
+        }
+
+        $loadBalancerProvisioner->registerTargets($targetGroupArn, $instanceIds);
+    });
+}
 
 $application = new Application('AWS Provisioner', 'dev');
 $application->add(new ProvisionCommand($orchestrator));

@@ -11,8 +11,8 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `AvailabilityZoneResolver` — validates the subnet count against the region's real AZs
 - [x] `SecurityGroupProvisioner` / `NetworkAclProvisioner` — idempotent, rules driven by `config/settings.php`
 - [x] `SubnetProvisioner` / `RouteTableProvisioner` — idempotent, includes the Internet Gateway route for public subnets
-- [ ] Load Balancer (ALB) + ACM certificate (Route 53 DNS validation)
-- [ ] Unified CLI (`bin/provision.php`) orchestrating everything in the right order
+- [x] Unified CLI (`bin/provision.php`) orchestrating the network layer in the right order, with step selection and `--dry-run`
+- [ ] Load Balancer (ALB) + ACM certificate (Route 53 DNS validation), wired into the CLI
 - [ ] Alternative network profiles (no public IPv4 / CloudFront in front of a private network)
 
 ## Requirements
@@ -83,9 +83,15 @@ Step by step in the AWS Console: **IAM → Users → Create user** → no consol
 
 ## Usage
 
-Still under construction — the unified CLI (`php bin/provision.php`) will be the single entry point once every provisioner is ready and orchestrated in the right order.
+```bash
+php bin/provision.php               # runs every step, in order
+php bin/provision.php subnets       # runs just one step (and whatever it needs from context)
+php bin/provision.php --dry-run     # prints the steps that would run, without calling AWS
+```
 
-In the meantime, `bin/verify-*.php` (`verify-vpc.php`, `verify-network.php`, `verify-subnets.php`) are **temporary scaffolding**, used to validate each provisioner against a real AWS account while it's being built. They will be removed once `bin/provision.php` covers the same ground — they are not the intended way to use this tool long-term.
+Steps implemented so far, in execution order: `vpc`, `internet-gateway`, `security-groups`, `network-acls`, `subnets`, `route-tables`. The Load Balancer and ACM/Route 53 steps are not wired in yet (see Status above).
+
+`dev/verify-*.php` are separate, standalone scripts kept around on purpose for isolated debugging of a single provisioner against a real AWS account without going through the full CLI — they are not part of the tool's normal usage.
 
 ## Architecture
 

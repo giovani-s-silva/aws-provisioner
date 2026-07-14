@@ -34,5 +34,28 @@ final class ProvisionCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        /** @var string[] $steps */
+        $steps = $input->getArgument('steps');
+        $dryRun = (bool) $input->getOption('dry-run');
+
+        $validNames = $this->orchestrator->stepNames();
+        $unknown = array_diff($steps, $validNames);
+        if ($unknown !== []) {
+            $output->writeln(sprintf(
+                '<error>Unknown step(s): %s. Available steps: %s.</error>',
+                implode(', ', $unknown),
+                implode(', ', $validNames),
+            ));
+
+            return Command::FAILURE;
+        }
+
+        $this->orchestrator->run($steps, $dryRun, function (string $name, bool $dryRun) use ($output): void {
+            $output->writeln(sprintf('%s <info>%s</info>', $dryRun ? '[dry-run]' : '->', $name));
+        });
+
+        $output->writeln('<info>Done.</info>');
+
+        return Command::SUCCESS;
     }
 }

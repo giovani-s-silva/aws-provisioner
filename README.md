@@ -12,7 +12,8 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `SecurityGroupProvisioner` / `NetworkAclProvisioner` — idempotent, rules driven by `config/settings.php`
 - [x] `SubnetProvisioner` / `RouteTableProvisioner` — idempotent, includes the Internet Gateway route for public subnets
 - [x] Unified CLI (`bin/provision.php`) orchestrating the network layer in the right order, with step selection and `--dry-run`
-- [ ] Load Balancer (ALB) + ACM certificate (Route 53 DNS validation), wired into the CLI
+- [x] `LoadBalancerProvisioner` — ALB, target group, HTTP->HTTPS redirect, idempotent
+- [x] `CertificateProvisioner` / `Route53DnsProvider` — requests the ACM certificate and creates its DNS validation record; the HTTPS listener is attached automatically once the certificate is ISSUED (not tested end-to-end against a real domain yet)
 - [ ] Alternative network profiles (no public IPv4 / CloudFront in front of a private network)
 
 ## Requirements
@@ -105,6 +106,16 @@ The policy below covers what is implemented so far (VPC, Internet Gateway, Secur
                     "iam:AWSServiceName": "elasticloadbalancing.amazonaws.com"
                 }
             }
+        },
+        {
+            "Sid": "CertificateProvisioning",
+            "Effect": "Allow",
+            "Action": [
+                "acm:ListCertificates",
+                "acm:RequestCertificate",
+                "acm:DescribeCertificate"
+            ],
+            "Resource": "*"
         }
     ]
 }
@@ -113,6 +124,26 @@ The policy below covers what is implemented so far (VPC, Internet Gateway, Secur
 > Why `Resource: "*"` even under "least privilege"? EC2 network creation actions (`CreateVpc`, `CreateInternetGateway`, etc.) don't support restricting to a specific ARN — the resource doesn't exist yet at authorization time. AWS recommends `*` for this group of actions and using tags/conditions to restrict what can actually be restricted.
 
 > Why `iam:CreateServiceLinkedRole`? The very first time an Application Load Balancer is created in an account, AWS needs to create the `AWSServiceRoleForElasticLoadBalancing` service-linked role so ELB can manage resources (like network interfaces) on your behalf — `CreateLoadBalancer` fails with `AccessDenied` without it. The `Condition` restricts this permission to only that specific service-linked role, following the exact pattern from AWS's own `ElasticLoadBalancingFullAccess` managed policy.
+
+If `AWS_ROUTE53_ACCESS_KEY_ID`/`AWS_ROUTE53_SECRET_ACCESS_KEY` in `.env` point to a **separate** IAM user (a different AWS account managing your DNS, for example), attach this policy to that user instead — it never needs the permissions above:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "Route53DnsValidation",
+            "Effect": "Allow",
+            "Action": [
+                "route53:ListHostedZonesByName",
+                "route53:ListResourceRecordSets",
+                "route53:ChangeResourceRecordSets"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
 
 > Why the extra `ec2:Describe*` actions (`DescribeAccountAttributes`, `DescribeAddresses`, `DescribeNetworkInterfaces`, etc.)? `CreateLoadBalancer` performs several read-only EC2 checks internally (account limits, existing network interfaces, VPC peering, ClassicLink) before creating anything — these show up as separate `AccessDenied` errors one at a time if missing. This list matches AWS's own `ElasticLoadBalancingFullAccess` managed policy, minus the parts unrelated to this tool (Cognito authentication on the ALB, Outposts CoIP pools).
 
@@ -126,7 +157,9 @@ php bin/provision.php subnets       # runs just one step (and whatever it needs 
 php bin/provision.php --dry-run     # prints the steps that would run, without calling AWS
 ```
 
-Steps implemented so far, in execution order: `vpc`, `internet-gateway`, `security-groups`, `network-acls`, `subnets`, `route-tables`, `load-balancer` (only registered when `loadBalancer.enabled` is true in `config/settings.php`). The `load-balancer` step provisions the ALB and an HTTP->HTTPS redirect, but no HTTPS listener yet — that needs a certificate, which the ACM/Route 53 step will provide once it's wired in (see Status above).
+Steps implemented so far, in execution order: `vpc`, `internet-gateway`, `security-groups`, `network-acls`, `subnets`, `route-tables`, `certificate` (only registered when `acmDomains` isn't empty), `load-balancer` (only registered when `loadBalancer.enabled` is true).
+
+The `certificate` step requests the ACM certificate and creates its DNS validation CNAME in Route 53, but validation isn't instant — AWS can take several minutes to confirm it. Run the step again later to check on it; once it reports `ISSUED`, the next run of the `load-balancer` step attaches the HTTPS listener automatically. Requires the domain to already exist as a Route 53 Hosted Zone (see "Required IAM permissions" above).
 
 `dev/verify-*.php` are separate, standalone scripts kept around on purpose for isolated debugging of a single provisioner against a real AWS account without going through the full CLI — they are not part of the tool's normal usage.
 

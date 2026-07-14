@@ -4,6 +4,8 @@
 declare(strict_types=1);
 
 use AwsProvisioner\Aws\ClientFactory;
+use AwsProvisioner\Certificates\CertificateProvisioner;
+use AwsProvisioner\Certificates\Route53DnsProvider;
 use AwsProvisioner\Config\Settings;
 use AwsProvisioner\Console\ProvisionCommand;
 use AwsProvisioner\LoadBalancer\LoadBalancerProvisioner;
@@ -217,6 +219,71 @@ $orchestrator->addStep('route-tables', function () use (
     }
 });
 
+$acmDomains = $settings->acmDomainList();
+$certificateProvisioner = new CertificateProvisioner($clientFactory->acm());
+
+if ($acmDomains !== []) {
+    $route53Credentials = $settings->route53Credentials() !== []
+        ? $settings->route53Credentials()
+        : $settings->awsCredentials();
+    $route53DnsProvider = new Route53DnsProvider($clientFactory->route53($route53Credentials));
+
+    $orchestrator->addStep('certificate', function () use (
+        $context,
+        $certificateProvisioner,
+        $route53DnsProvider,
+        $acmDomains,
+    ) {
+        foreach ($acmDomains as $rootDomain => $domainConfig) {
+            $dnsProvider = $domainConfig['dnsProvider'] ?? 'route53';
+            if ($dnsProvider !== 'route53') {
+                throw new \RuntimeException(
+                    "DNS provider '{$dnsProvider}' for '{$rootDomain}' is not implemented yet (only 'route53' is)."
+                );
+            }
+
+            $domains = ($domainConfig['subdomain'] ?? null) === '*'
+                ? [$rootDomain, "*.{$rootDomain}"]
+                : [$rootDomain];
+
+            $certificateArn = $certificateProvisioner->request($domains);
+            $context->certificateArns[$rootDomain] = $certificateArn;
+
+            $status = $certificateProvisioner->status($certificateArn);
+            if ($status === 'ISSUED') {
+                echo "Certificate for '{$rootDomain}' is already ISSUED ({$certificateArn}).\n";
+                continue;
+            }
+
+            $records = $certificateProvisioner->validationRecords($certificateArn);
+            if ($records === []) {
+                echo "Certificate for '{$rootDomain}' requested ({$certificateArn}), "
+                    . "validation details not ready yet -- run this step again shortly.\n";
+                continue;
+            }
+
+            $zoneId = $route53DnsProvider->resolveZoneId($rootDomain);
+            if ($zoneId === null) {
+                throw new \RuntimeException(
+                    "No Route 53 Hosted Zone found for '{$rootDomain}'. "
+                    . 'It must already exist there before requesting a certificate.'
+                );
+            }
+
+            foreach ($records as $domainName => $record) {
+                if ($route53DnsProvider->recordExists($zoneId, $record['cnameName'])) {
+                    continue;
+                }
+                $route53DnsProvider->upsertCname($zoneId, $record['cnameName'], $record['cnameValue']);
+                echo "DNS validation record created for '{$domainName}'.\n";
+            }
+
+            echo "Certificate for '{$rootDomain}' status: {$status}. "
+                . "DNS validation can take several minutes -- run this step again later to confirm.\n";
+        }
+    });
+}
+
 $loadBalancerPreferences = $settings->loadBalancerPreferences();
 
 if ($loadBalancerPreferences['enabled'] ?? false) {
@@ -230,6 +297,8 @@ if ($loadBalancerPreferences['enabled'] ?? false) {
         $subnetProvisioner,
         $loadBalancerProvisioner,
         $loadBalancerPreferences,
+        $certificateProvisioner,
+        $acmDomains,
         $settings,
         $ec2,
     ) {
@@ -281,6 +350,16 @@ if ($loadBalancerPreferences['enabled'] ?? false) {
             $scheme,
         );
         $loadBalancerProvisioner->ensureHttpToHttpsRedirect($loadBalancerArn);
+
+        $rootDomain = array_key_first($acmDomains);
+        if ($rootDomain !== null) {
+            $certificateArn = $context->certificateArns[$rootDomain]
+                ?? $certificateProvisioner->findByDomain($rootDomain);
+
+            if ($certificateArn !== null && $certificateProvisioner->status($certificateArn) === 'ISSUED') {
+                $loadBalancerProvisioner->ensureHttpsListener($loadBalancerArn, $targetGroupArn, $certificateArn);
+            }
+        }
 
         $context->loadBalancerArn = $loadBalancerArn;
         $context->targetGroupArn = $targetGroupArn;

@@ -29,4 +29,7 @@ final class ProvisioningContext
     public ?string $loadBalancerArn = null;
 
     public ?string $targetGroupArn = null;
+
+    /** @var array<string, string> root domain => certificate ARN */
+    public array $certificateArns = [];
 }

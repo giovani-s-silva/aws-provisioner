@@ -128,8 +128,9 @@ echo "Your public IP: {$myIp}\n\n";
 $securityGroupProvisioner = new SecurityGroupProvisioner($ec2);
 $groupIdsByTier = [];
 
-// 'web' before 'db' on purpose: the db rule references the web security group.
-foreach (['web', 'db'] as $tier) {
+// Tiers are processed in the order declared under network.tiers in config/settings.php —
+// 'web' must come before 'db' there, since the db rule references the web security group.
+foreach ($settings->tierNames() as $tier) {
     $config = $settings->securityGroupPreferences()[$tier] ?? null;
     if ($config === null) {
         continue;
@@ -148,7 +149,7 @@ echo "\n";
 
 $networkAclProvisioner = new NetworkAclProvisioner($ec2);
 
-foreach (['web', 'db'] as $tier) {
+foreach ($settings->tierNames() as $tier) {
     $config = $settings->networkAclPreferences()[$tier] ?? null;
     if ($config === null) {
         continue;

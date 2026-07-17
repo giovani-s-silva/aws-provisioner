@@ -89,6 +89,16 @@ final class Settings
         return $this->preferences['network'] ?? [];
     }
 
+    /**
+     * @return string[] the tier names declared under network.tiers (e.g. ['web', 'db']),
+     * in the order they're written in config/settings.php — the single source of truth for
+     * which tiers exist. Nothing else in this codebase hardcodes tier names.
+     */
+    public function tierNames(): array
+    {
+        return array_keys($this->vpcPreferences()['tiers'] ?? []);
+    }
+
     public function securityGroupPreferences(): array
     {
         return $this->preferences['securityGroups'] ?? [];

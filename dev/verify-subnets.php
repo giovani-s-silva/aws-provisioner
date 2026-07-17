@@ -55,7 +55,7 @@ $routeTableProvisioner = new RouteTableProvisioner($ec2);
 $subnetMaskBits = $vpcPreferences['subnetMaskBits'] ?? 24;
 $tierOffset = 0;
 
-foreach (['web', 'db'] as $tier) {
+foreach ($settings->tierNames() as $tier) {
     $tierConfig = $vpcPreferences['tiers'][$tier] ?? null;
     $naclConfig = $settings->networkAclPreferences()[$tier] ?? null;
     $routeTableConfig = $settings->routeTablePreferences()[$tier] ?? null;

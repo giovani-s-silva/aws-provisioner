@@ -70,7 +70,7 @@ $orchestrator->addStep('security-groups', function () use (
     $context->vpcId ??= $vpcProvisioner->findByName($vpcName);
     $myIp = PublicIp::resolve($settings->caBundlePath());
 
-    foreach (['web', 'db'] as $tier) {
+    foreach ($settings->tierNames() as $tier) {
         $config = $settings->securityGroupPreferences()[$tier] ?? null;
         if ($config === null) {
             continue;
@@ -93,7 +93,7 @@ $orchestrator->addStep('network-acls', function () use (
 ) {
     $context->vpcId ??= $vpcProvisioner->findByName($vpcName);
 
-    foreach (['web', 'db'] as $tier) {
+    foreach ($settings->tierNames() as $tier) {
         $config = $settings->networkAclPreferences()[$tier] ?? null;
         if ($config === null) {
             continue;
@@ -126,7 +126,7 @@ $orchestrator->addStep('subnets', function () use (
 
     $tierOffset = 0;
 
-    foreach (['web', 'db'] as $tier) {
+    foreach ($settings->tierNames() as $tier) {
         $tierConfig = $vpcPreferences['tiers'][$tier] ?? null;
         $naclConfig = $settings->networkAclPreferences()[$tier] ?? null;
         if ($tierConfig === null || $naclConfig === null) {
@@ -181,7 +181,7 @@ $orchestrator->addStep('route-tables', function () use (
     $vpcPreferences = $settings->vpcPreferences();
     $subnetsPerTier = $vpcPreferences['subnetsPerTier'] ?? 2;
 
-    foreach (['web', 'db'] as $tier) {
+    foreach ($settings->tierNames() as $tier) {
         $tierConfig = $vpcPreferences['tiers'][$tier] ?? null;
         $routeTableConfig = $settings->routeTablePreferences()[$tier] ?? null;
         if ($tierConfig === null || $routeTableConfig === null) {
@@ -304,9 +304,9 @@ if ($loadBalancerPreferences['enabled'] ?? false) {
     ) {
         $context->vpcId ??= $vpcProvisioner->findByName($vpcName);
 
-        // The public tier's subnets/security group host the load balancer. An 'internal' scheme
-        // (private-with-cloudfront profile) would use a different tier — not built yet.
-        $tier = 'web';
+        // Which tier's subnets/security group host the load balancer — configurable since
+        // renaming the public tier, or a future 'internal' scheme, changes which one applies.
+        $tier = $loadBalancerPreferences['tier'] ?? 'web';
         $projectName = $settings->projectName();
         $subnetsPerTier = $settings->vpcPreferences()['subnetsPerTier'] ?? 2;
 

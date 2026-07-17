@@ -35,6 +35,9 @@ return [
         // many AZs you set in 'subnetsPerTier'.
         'subnetMaskBits' => 24,
 
+        // The names below ('web', 'db') are just examples — rename them, or add a third
+        // (or fourth) tier, and everything else (security groups, ACLs, subnets, route
+        // tables) picks it up automatically. This is the only place tier names are defined.
         'tiers' => [
             'web' => [
                 'mapPublicIpOnLaunch' => true,
@@ -97,10 +100,11 @@ return [
     // all. When true, whether it gets a public IP or stays fully private follows
     // 'networkProfile' above ('public-private-ipv4' -> internet-facing, 'private-with-cloudfront'
     // -> internal) — there's no separate public/private switch here, so the two settings can't
-    // end up contradicting each other.
+    // end up contradicting each other. 'tier' must match one of the keys under network.tiers.
     'loadBalancer' => [
         'enabled' => true,
         'name' => "lb-{$projectName}",
+        'tier' => 'web',
     ],
 
     // Leave empty to skip requesting any certificate (e.g. the domain isn't ready at your

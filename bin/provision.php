@@ -7,6 +7,7 @@ use AwsProvisioner\Aws\ClientFactory;
 use AwsProvisioner\Certificates\CertificateProvisioner;
 use AwsProvisioner\Certificates\Route53DnsProvider;
 use AwsProvisioner\Config\Settings;
+use AwsProvisioner\Config\TierConsistencyChecker;
 use AwsProvisioner\Console\ProvisionCommand;
 use AwsProvisioner\LoadBalancer\LoadBalancerProvisioner;
 use AwsProvisioner\Network\AvailabilityZoneResolver;
@@ -29,6 +30,10 @@ $settings = Settings::load(
     dirname(__DIR__) . '/.env',
     dirname(__DIR__) . '/config/settings.php',
 );
+
+foreach (TierConsistencyChecker::check($settings) as $warning) {
+    fwrite(STDERR, "Warning: {$warning}\n");
+}
 
 $clientFactory = new ClientFactory(
     $settings->awsCredentials(),

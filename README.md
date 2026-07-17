@@ -13,8 +13,11 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `SubnetProvisioner` / `RouteTableProvisioner` — idempotent, includes the Internet Gateway route for public subnets
 - [x] Unified CLI (`bin/provision.php`) orchestrating the network layer in the right order, with step selection and `--dry-run`
 - [x] `LoadBalancerProvisioner` — ALB, target group, HTTP->HTTPS redirect, idempotent
-- [x] `CertificateProvisioner` / `Route53DnsProvider` — requests the ACM certificate and creates its DNS validation record; the HTTPS listener is attached automatically once the certificate is ISSUED (not tested end-to-end against a real domain yet)
+- [x] `CertificateProvisioner` / `Route53DnsProvider` — requests the ACM certificate and creates its DNS validation record; the HTTPS listener is attached automatically once the certificate is ISSUED. Verified end-to-end against a real domain, including Route 53 credentials from a separate AWS account.
+- [x] Tier names (`web`, `db`, or however many/whatever you rename them to) are derived from `network.tiers` in `config/settings.php` instead of hardcoded — `TierConsistencyChecker` warns if a tier is missing from `securityGroups`/`networkAcls`/`routeTables`, or if one of those has an entry for a tier that doesn't exist
 - [ ] Alternative network profiles (no public IPv4 / CloudFront in front of a private network)
+- [ ] Known limitation: the `load-balancer` step registers *every* running EC2 instance in the VPC as a target, regardless of role. Once Auto Scaling is introduced, attaching the ASG directly to the target group (`TargetGroupARNs`) is the correct mechanism — it registers/deregisters instances automatically as they launch or terminate, making this manual scan mostly relevant only for standalone instances outside any ASG
+- [ ] Possible improvement: nest each tier's security group/ACL/route table settings under its own entry in `network.tiers`, instead of repeating the tier name as a key across four separate top-level sections
 
 ## Requirements
 

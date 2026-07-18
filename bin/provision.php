@@ -348,6 +348,14 @@ if ($loadBalancerPreferences['enabled'] ?? false) {
             "{$loadBalancerPreferences['name']}-tg",
             $context->vpcId,
         );
+
+        $stickiness = $loadBalancerPreferences['stickiness'] ?? ['enabled' => false];
+        $loadBalancerProvisioner->configureStickiness(
+            $targetGroupArn,
+            $stickiness['enabled'] ?? false,
+            $stickiness['durationSeconds'] ?? 86400,
+        );
+
         $loadBalancerArn = $loadBalancerProvisioner->create(
             $loadBalancerPreferences['name'],
             $subnetIds,

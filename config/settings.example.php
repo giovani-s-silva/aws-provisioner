@@ -105,6 +105,15 @@ return [
         'enabled' => true,
         'name' => "lb-{$projectName}",
         'tier' => 'web',
+
+        // Sticky sessions: routes a given client to the same target for the cookie's
+        // lifetime, using a load-balancer-generated cookie. Off by default -- only turn
+        // this on if your app keeps per-request state on the instance that served it
+        // (e.g. PHP sessions stored on local disk instead of a shared store).
+        'stickiness' => [
+            'enabled' => false,
+            'durationSeconds' => 86400,
+        ],
     ],
 
     // Leave empty to skip requesting any certificate (e.g. the domain isn't ready at your

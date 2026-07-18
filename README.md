@@ -12,7 +12,7 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `SecurityGroupProvisioner` / `NetworkAclProvisioner` — idempotent, rules driven by `config/settings.php`
 - [x] `SubnetProvisioner` / `RouteTableProvisioner` — idempotent, includes the Internet Gateway route for public subnets
 - [x] Unified CLI (`bin/provision.php`) orchestrating the network layer in the right order, with step selection and `--dry-run`
-- [x] `LoadBalancerProvisioner` — ALB, target group, HTTP->HTTPS redirect, idempotent
+- [x] `LoadBalancerProvisioner` — ALB, target group, HTTP->HTTPS redirect, optional sticky sessions (`loadBalancer.stickiness` in `config/settings.php`), idempotent
 - [x] `CertificateProvisioner` / `Route53DnsProvider` — requests the ACM certificate and creates its DNS validation record; the HTTPS listener is attached automatically once the certificate is ISSUED. Verified end-to-end against a real domain, including Route 53 credentials from a separate AWS account.
 - [x] Tier names (`web`, `db`, or however many/whatever you rename them to) are derived from `network.tiers` in `config/settings.php` instead of hardcoded — `TierConsistencyChecker` warns if a tier is missing from `securityGroups`/`networkAcls`/`routeTables`, or if one of those has an entry for a tier that doesn't exist
 - [ ] Alternative network profiles (no public IPv4 / CloudFront in front of a private network)
@@ -95,7 +95,8 @@ The policy below covers what is implemented so far (VPC, Internet Gateway, Secur
                 "elasticloadbalancing:CreateLoadBalancer",
                 "elasticloadbalancing:DescribeListeners",
                 "elasticloadbalancing:CreateListener",
-                "elasticloadbalancing:RegisterTargets"
+                "elasticloadbalancing:RegisterTargets",
+                "elasticloadbalancing:ModifyTargetGroupAttributes"
             ],
             "Resource": "*"
         },

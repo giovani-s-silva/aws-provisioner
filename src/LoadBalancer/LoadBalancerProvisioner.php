@@ -59,6 +59,19 @@ final class LoadBalancerProvisioner
         return $result['TargetGroups'][0]['TargetGroupArn'];
     }
 
+    /** Safe to call repeatedly — this just sets the attributes to whatever is passed, no create/exists check needed. */
+    public function configureStickiness(string $targetGroupArn, bool $enabled, int $durationSeconds = 86400): void
+    {
+        $this->elb->modifyTargetGroupAttributes([
+            'TargetGroupArn' => $targetGroupArn,
+            'Attributes' => [
+                ['Key' => 'stickiness.enabled', 'Value' => $enabled ? 'true' : 'false'],
+                ['Key' => 'stickiness.type', 'Value' => 'lb_cookie'],
+                ['Key' => 'stickiness.lb_cookie.duration_seconds', 'Value' => (string) $durationSeconds],
+            ],
+        ]);
+    }
+
     public function findByName(string $name): ?string
     {
         try {

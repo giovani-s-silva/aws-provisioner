@@ -153,6 +153,12 @@ If `AWS_ROUTE53_ACCESS_KEY_ID`/`AWS_ROUTE53_SECRET_ACCESS_KEY` in `.env` point t
 
 Step by step in the AWS Console: **IAM → Users → Create user** → no console access, just "Access key - Programmatic access" → **Attach policy directly** → paste the JSON above as an inline policy → generate the Access Key and paste it into `.env`.
 
+## Credential security
+
+- `.env` accepts either a regular IAM user Access Key (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`), or a temporary one — the same two variables filled with short-lived values, plus `AWS_SESSION_TOKEN` — generated with `aws sts get-session-token --duration-seconds 3600`. The temporary option still relies on the long-lived key to generate the session, but keeps that long-lived key out of `.env` and limits the exposure window if the temporary credentials ever leak.
+- Whichever you use: deactivate the Access Key in the IAM console whenever you're not actively running the tool, and delete it once you're done provisioning. Reactivating a deactivated key takes seconds if you need it again — there's no upside to leaving one active between sessions.
+- `.env` being gitignored only protects against accidentally committing the key — it does nothing for a key that's simply sitting active and unused. Treat "deactivate when idle" as the real boundary, not the `.gitignore` entry.
+
 ## Usage
 
 ```bash

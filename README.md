@@ -1,6 +1,6 @@
 # AWS Provisioner
 
-Command-line PHP tool to provision a repeatable, idempotent AWS network environment — VPC, public/private subnets, security groups, and an Application Load Balancer with an ACM/Route 53 certificate — from a single command, no more clicking through the Console in the right order.
+Command-line PHP tool to provision a repeatable, idempotent AWS environment — VPC, public/private subnets, security groups, an Application Load Balancer with an ACM/Route 53 certificate, and an Auto Scaling Group of EC2 instances behind it — from a single command, no more clicking through the Console in the right order.
 
 ## Status
 
@@ -15,8 +15,9 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `LoadBalancerProvisioner` — ALB, target group, HTTP->HTTPS redirect, optional sticky sessions (`loadBalancer.stickiness` in `config/settings.php`), idempotent
 - [x] `CertificateProvisioner` / `Route53DnsProvider` — requests the ACM certificate and creates its DNS validation record; the HTTPS listener is attached automatically once the certificate is ISSUED. Verified end-to-end against a real domain, including Route 53 credentials from a separate AWS account.
 - [x] Tier names (`web`, `db`, or however many/whatever you rename them to) are derived from `network.tiers` in `config/settings.php` instead of hardcoded — `TierConsistencyChecker` warns if a tier is missing from `securityGroups`/`networkAcls`/`routeTables`, or if one of those has an entry for a tier that doesn't exist
+- [x] `LaunchTemplateProvisioner` / `AutoScalingGroupProvisioner` — EC2 instances behind the target group, managed by an Auto Scaling Group (`autoScaling.enabled`), attached directly via `TargetGroupARNs` so instances register/deregister automatically as they launch or terminate. The AMI is resolved automatically (always the latest one, via a public SSM parameter) from `compute.osFamily`, or you can bring your own via `compute.amiId`. The default runtime (`compute.runtime`) installs Apache + PHP as a working smoke test for the target group's health check — not meant to be a production stack as-is; set `runtime.type` to `'none'` when `amiId` points to an already-configured image. `minSize`/`maxSize` default to 1/1 on purpose, to avoid unexpected scaling costs — no CPU/request-based scaling policies are configured, that's a deliberate manual step for later.
 - [ ] Alternative network profiles (no public IPv4 / CloudFront in front of a private network)
-- [ ] Known limitation: the `load-balancer` step registers *every* running EC2 instance in the VPC as a target, regardless of role. Once Auto Scaling is introduced, attaching the ASG directly to the target group (`TargetGroupARNs`) is the correct mechanism — it registers/deregisters instances automatically as they launch or terminate, making this manual scan mostly relevant only for standalone instances outside any ASG
+- [ ] Known limitation: the `load-balancer` step's own EC2 scan-and-register (every running instance in the VPC, regardless of role) still runs unconditionally as a fallback for instances outside any Auto Scaling Group. It's harmless alongside the ASG's own registration (registering an already-registered target is a no-op) but redundant once a project fully adopts Auto Scaling
 - [ ] Possible improvement: nest each tier's security group/ACL/route table settings under its own entry in `network.tiers`, instead of repeating the tier name as a key across four separate top-level sections
 
 ## Requirements
@@ -120,10 +121,43 @@ The policy below covers what is implemented so far (VPC, Internet Gateway, Secur
                 "acm:DescribeCertificate"
             ],
             "Resource": "*"
+        },
+        {
+            "Sid": "ComputeProvisioning",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeLaunchTemplates",
+                "ec2:DescribeLaunchTemplateVersions",
+                "ec2:CreateLaunchTemplate",
+                "ec2:CreateLaunchTemplateVersion",
+                "ec2:ModifyLaunchTemplate",
+                "ec2:RunInstances",
+                "ssm:GetParameter",
+                "autoscaling:DescribeAutoScalingGroups",
+                "autoscaling:CreateAutoScalingGroup",
+                "autoscaling:UpdateAutoScalingGroup",
+                "autoscaling:AttachLoadBalancerTargetGroups"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "AutoScalingServiceLinkedRole",
+            "Effect": "Allow",
+            "Action": "iam:CreateServiceLinkedRole",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "iam:AWSServiceName": "autoscaling.amazonaws.com"
+                }
+            }
         }
     ]
 }
 ```
+
+> Why no `iam:PassRole`? That's only required when the Launch Template attaches an instance profile (an IAM role) to the instances themselves — this tool doesn't do that, so it's left out. Needed only if you customize the Launch Template to add one.
+
+> Why `ec2:RunInstances` under `ComputeProvisioning`? Amazon EC2 Auto Scaling checks that the calling IAM identity is authorized to use a Launch Template at `CreateAutoScalingGroup`/`UpdateAutoScalingGroup` time — even though the actual instances are launched later by Auto Scaling's own service-linked role, not this one. Without it: `AccessDenied: You are not authorized to use launch template`.
 
 > Why `Resource: "*"` even under "least privilege"? EC2 network creation actions (`CreateVpc`, `CreateInternetGateway`, etc.) don't support restricting to a specific ARN — the resource doesn't exist yet at authorization time. AWS recommends `*` for this group of actions and using tags/conditions to restrict what can actually be restricted.
 
@@ -167,9 +201,11 @@ php bin/provision.php subnets       # runs just one step (and whatever it needs 
 php bin/provision.php --dry-run     # prints the steps that would run, without calling AWS
 ```
 
-Steps implemented so far, in execution order: `vpc`, `internet-gateway`, `security-groups`, `network-acls`, `subnets`, `route-tables`, `certificate` (only registered when `acmDomains` isn't empty), `load-balancer` (only registered when `loadBalancer.enabled` is true).
+Steps implemented so far, in execution order: `vpc`, `internet-gateway`, `security-groups`, `network-acls`, `subnets`, `route-tables`, `certificate` (only registered when `acmDomains` isn't empty), `load-balancer` (only registered when `loadBalancer.enabled` is true), `auto-scaling` (only registered when `autoScaling.enabled` is true — requires `loadBalancer.enabled`).
 
 The `certificate` step requests the ACM certificate and creates its DNS validation CNAME in Route 53, but validation isn't instant — AWS can take several minutes to confirm it. Run the step again later to check on it; once it reports `ISSUED`, the next run of the `load-balancer` step attaches the HTTPS listener automatically. Requires the domain to already exist as a Route 53 Hosted Zone (see "Required IAM permissions" above).
+
+The `auto-scaling` step creates a Launch Template and an Auto Scaling Group attached to the load balancer's target group. Changing `compute` settings (a new `amiId`, a different `instanceType`) and running the step again creates a new Launch Template *version* and sets it as default — existing instances keep running as they are; only new ones (scale-out, replacements) pick up the change. To roll it out to already-running instances, trigger an EC2 instance refresh yourself (not something this tool automates).
 
 `dev/verify-*.php` are separate, standalone scripts kept around on purpose for isolated debugging of a single provisioner against a real AWS account without going through the full CLI — they are not part of the tool's normal usage.
 
@@ -184,6 +220,7 @@ src/
 ├── Config/               Loads .env + settings.php
 ├── Network/              VPC, Security Groups, ACLs, Subnets, Route Tables
 ├── LoadBalancer/         Application Load Balancer
+├── Compute/              AMI resolution, User Data, Launch Template, Auto Scaling Group
 ├── Certificates/         ACM + Route 53 DNS validation
 └── Provisioning/         Orchestrates the execution order between the steps above
 ```

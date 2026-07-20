@@ -6,6 +6,10 @@ declare(strict_types=1);
 use AwsProvisioner\Aws\ClientFactory;
 use AwsProvisioner\Certificates\CertificateProvisioner;
 use AwsProvisioner\Certificates\Route53DnsProvider;
+use AwsProvisioner\Compute\AmiResolver;
+use AwsProvisioner\Compute\AutoScalingGroupProvisioner;
+use AwsProvisioner\Compute\LaunchTemplateProvisioner;
+use AwsProvisioner\Compute\UserDataBuilder;
 use AwsProvisioner\Config\Settings;
 use AwsProvisioner\Config\TierConsistencyChecker;
 use AwsProvisioner\Console\ProvisionCommand;
@@ -393,6 +397,117 @@ if ($loadBalancerPreferences['enabled'] ?? false) {
         }
 
         $loadBalancerProvisioner->registerTargets($targetGroupArn, $instanceIds);
+    });
+}
+
+$autoScalingPreferences = $settings->autoScalingPreferences();
+
+if ($autoScalingPreferences['enabled'] ?? false) {
+    if (!($loadBalancerPreferences['enabled'] ?? false)) {
+        throw new \RuntimeException(
+            "'autoScaling.enabled' requires 'loadBalancer.enabled' -- the Auto Scaling Group "
+            . "attaches directly to the load balancer's target group."
+        );
+    }
+
+    $amiResolver = new AmiResolver($clientFactory->ssm());
+    $userDataBuilder = new UserDataBuilder();
+    $launchTemplateProvisioner = new LaunchTemplateProvisioner($ec2);
+    $autoScalingGroupProvisioner = new AutoScalingGroupProvisioner($clientFactory->autoScaling());
+
+    $orchestrator->addStep('auto-scaling', function () use (
+        $context,
+        $vpcProvisioner,
+        $vpcName,
+        $securityGroupProvisioner,
+        $subnetProvisioner,
+        $loadBalancerProvisioner,
+        $loadBalancerPreferences,
+        $autoScalingPreferences,
+        $amiResolver,
+        $userDataBuilder,
+        $launchTemplateProvisioner,
+        $autoScalingGroupProvisioner,
+        $settings,
+    ) {
+        $context->vpcId ??= $vpcProvisioner->findByName($vpcName);
+
+        $computePreferences = $settings->computePreferences();
+        $tier = $computePreferences['tier'] ?? 'web';
+        $projectName = $settings->projectName();
+        $subnetsPerTier = $settings->vpcPreferences()['subnetsPerTier'] ?? 2;
+
+        if (
+            ($computePreferences['amiId'] ?? null) !== null
+            && ($computePreferences['runtime']['type'] ?? 'php-apache') !== 'none'
+        ) {
+            fwrite(
+                STDERR,
+                "Warning: compute.amiId is set together with compute.runtime.type != 'none' -- this will "
+                . "attempt to provision software on top of your own AMI, which may fail or overwrite "
+                . "existing configuration. Set compute.runtime.type to 'none' if your AMI is already "
+                . "configured.\n"
+            );
+        }
+
+        $securityGroupConfig = $settings->securityGroupPreferences()[$tier] ?? null;
+        if ($securityGroupConfig === null) {
+            throw new \RuntimeException("No security group configured for tier '{$tier}'.");
+        }
+
+        $securityGroupId = $context->securityGroupIds[$tier]
+            ?? $securityGroupProvisioner->findByName($securityGroupConfig['name']);
+        if ($securityGroupId === null) {
+            throw new \RuntimeException(
+                "Security group '{$securityGroupConfig['name']}' not found. Run the security-groups step first."
+            );
+        }
+
+        $subnetIds = $context->subnetIds[$tier] ?? [];
+        if ($subnetIds === []) {
+            for ($index = 0; $index < $subnetsPerTier; $index++) {
+                $subnetName = "sub-{$projectName}-{$tier}-" . ($index + 1);
+                $subnetId = $subnetProvisioner->findByName($context->vpcId, $subnetName);
+                if ($subnetId !== null) {
+                    $subnetIds[] = $subnetId;
+                }
+            }
+        }
+        if ($subnetIds === []) {
+            throw new \RuntimeException("No subnets found for tier '{$tier}'. Run the subnets step first.");
+        }
+
+        $targetGroupArn = $context->targetGroupArn
+            ?? $loadBalancerProvisioner->findTargetGroupByName("{$loadBalancerPreferences['name']}-tg");
+        if ($targetGroupArn === null) {
+            throw new \RuntimeException('Target group not found. Run the load-balancer step first.');
+        }
+
+        $amiId = $amiResolver->resolve($computePreferences);
+        $userData = $userDataBuilder->build($computePreferences['runtime'] ?? [], $projectName);
+
+        $launchTemplateData = [
+            'ImageId' => $amiId,
+            'InstanceType' => $computePreferences['instanceType'] ?? 't3.micro',
+            'SecurityGroupIds' => [$securityGroupId],
+        ];
+        if ($userData !== '') {
+            $launchTemplateData['UserData'] = base64_encode($userData);
+        }
+
+        $launchTemplateId = $launchTemplateProvisioner->ensure("lt-{$projectName}", $launchTemplateData);
+
+        $autoScalingGroupName = "asg-{$projectName}";
+        $autoScalingGroupProvisioner->ensure(
+            $autoScalingGroupName,
+            $launchTemplateId,
+            $subnetIds,
+            $autoScalingPreferences['minSize'] ?? 1,
+            $autoScalingPreferences['maxSize'] ?? 1,
+            $autoScalingPreferences['desiredCapacity'] ?? 1,
+        );
+
+        $autoScalingGroupProvisioner->attachToTargetGroup($autoScalingGroupName, $targetGroupArn);
     });
 }
 

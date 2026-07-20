@@ -119,6 +119,16 @@ final class Settings
         return $this->preferences['loadBalancer'] ?? ['enabled' => false];
     }
 
+    public function computePreferences(): array
+    {
+        return $this->preferences['compute'] ?? [];
+    }
+
+    public function autoScalingPreferences(): array
+    {
+        return $this->preferences['autoScaling'] ?? ['enabled' => false];
+    }
+
     public function acmDomainList(): array
     {
         return $this->preferences['acmDomains'] ?? [];

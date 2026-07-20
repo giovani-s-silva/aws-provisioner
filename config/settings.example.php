@@ -80,7 +80,10 @@ return [
         'web' => [
             'name' => "acl-{$projectName}-web",
             'servicePorts' => [22, 80, 443],
-            'outboundPorts' => [3306],
+            // 80/443 here (not just 3306) because the instance itself is also an outbound
+            // HTTP(S) client -- e.g. compute.runtime's package installation (apt, PPA) needs
+            // to reach outside the VPC, separate from serving inbound traffic on those ports.
+            'outboundPorts' => [80, 443, 3306],
         ],
         'db' => [
             'name' => "acl-{$projectName}-db",
@@ -114,6 +117,48 @@ return [
             'enabled' => false,
             'durationSeconds' => 86400,
         ],
+    ],
+
+    // EC2 instances behind the load balancer, managed by an Auto Scaling Group so unhealthy
+    // instances get replaced automatically. Requires 'loadBalancer.enabled' above -- the ASG
+    // attaches directly to its target group.
+    'compute' => [
+        // Which tier's subnets/security group the instances launch into. Must match one of
+        // the keys under network.tiers (same idea as 'loadBalancer.tier' above).
+        'tier' => 'web',
+
+        'instanceType' => 't3.micro',
+
+        // 'osFamily' picks which AMI gets resolved automatically (always the latest one,
+        // via a public SSM parameter -- never a hardcoded AMI ID, since those go stale and
+        // differ per region). Accepted values: 'ubuntu', 'amazon-linux'.
+        'osFamily' => 'ubuntu',
+
+        // Bring your own AMI instead (already fully configured, or built with Packer, or
+        // whatever) -- this skips 'osFamily' resolution entirely. Pair this with
+        // 'runtime.type' => 'none' below, unless your AMI is a plain/unconfigured Ubuntu or
+        // Amazon Linux image and you actually want 'runtime' to provision it.
+        'amiId' => null,
+
+        'runtime' => [
+            // 'php-apache' installs Apache + PHP + a placeholder page, just so the target
+            // group's health check has something to find -- a smoke test, not meant to be
+            // your production stack as-is. 'none' skips all software provisioning (use this
+            // with a custom 'amiId' that's already configured).
+            'type' => 'php-apache',
+            'phpVersion' => '8.5',
+        ],
+    ],
+
+    'autoScaling' => [
+        'enabled' => false,
+
+        // Keep min == max while testing -- no scale-out surprises, no unexpected cost. Raise
+        // 'maxSize' once you're ready for real elasticity (this tool doesn't configure scaling
+        // policies -- CPU/request-based scaling -- that's a deliberate manual step for later).
+        'minSize' => 1,
+        'maxSize' => 1,
+        'desiredCapacity' => 1,
     ],
 
     // Leave empty to skip requesting any certificate (e.g. the domain isn't ready at your

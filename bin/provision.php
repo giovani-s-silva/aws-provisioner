@@ -5,6 +5,7 @@ declare(strict_types=1);
 
 use AwsProvisioner\Aws\ClientFactory;
 use AwsProvisioner\Certificates\CertificateProvisioner;
+use AwsProvisioner\Certificates\CloudflareDnsProvider;
 use AwsProvisioner\Certificates\Route53DnsProvider;
 use AwsProvisioner\Compute\AmiResolver;
 use AwsProvisioner\Compute\AutoScalingGroupProvisioner;
@@ -235,19 +236,25 @@ if ($acmDomains !== []) {
     $route53Credentials = $settings->route53Credentials() !== []
         ? $settings->route53Credentials()
         : $settings->awsCredentials();
-    $route53DnsProvider = new Route53DnsProvider($clientFactory->route53($route53Credentials));
+
+    $dnsProviders = [
+        'route53' => new Route53DnsProvider($clientFactory->route53($route53Credentials)),
+        'cloudflare' => new CloudflareDnsProvider($clientFactory->cloudflare($settings->cloudflareApiToken())),
+    ];
 
     $orchestrator->addStep('certificate', function () use (
         $context,
         $certificateProvisioner,
-        $route53DnsProvider,
+        $dnsProviders,
         $acmDomains,
     ) {
         foreach ($acmDomains as $rootDomain => $domainConfig) {
-            $dnsProvider = $domainConfig['dnsProvider'] ?? 'route53';
-            if ($dnsProvider !== 'route53') {
+            $dnsProviderName = $domainConfig['dnsProvider'] ?? 'route53';
+            $dnsProvider = $dnsProviders[$dnsProviderName] ?? null;
+            if ($dnsProvider === null) {
                 throw new \RuntimeException(
-                    "DNS provider '{$dnsProvider}' for '{$rootDomain}' is not implemented yet (only 'route53' is)."
+                    "DNS provider '{$dnsProviderName}' for '{$rootDomain}' is not implemented (accepted: "
+                    . implode(', ', array_keys($dnsProviders)) . ').'
                 );
             }
 
@@ -271,20 +278,20 @@ if ($acmDomains !== []) {
                 continue;
             }
 
-            $zoneId = $route53DnsProvider->resolveZoneId($rootDomain);
+            $zoneId = $dnsProvider->resolveZoneId($rootDomain);
             if ($zoneId === null) {
                 throw new \RuntimeException(
-                    "No Route 53 Hosted Zone found for '{$rootDomain}'. "
+                    "No {$dnsProviderName} zone found for '{$rootDomain}'. "
                     . 'It must already exist there before requesting a certificate.'
                 );
             }
 
             foreach ($records as $domainName => $record) {
-                if ($route53DnsProvider->recordExists($zoneId, $record['cnameName'])) {
+                if ($dnsProvider->recordExists($zoneId, $record['cnameName'])) {
                     continue;
                 }
-                $route53DnsProvider->upsertCname($zoneId, $record['cnameName'], $record['cnameValue']);
-                echo "DNS validation record created for '{$domainName}'.\n";
+                $dnsProvider->upsertCname($zoneId, $record['cnameName'], $record['cnameValue']);
+                echo "DNS validation record created for '{$domainName}' via {$dnsProviderName}.\n";
             }
 
             echo "Certificate for '{$rootDomain}' status: {$status}. "

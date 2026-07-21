@@ -10,6 +10,7 @@ use Aws\Ec2\Ec2Client;
 use Aws\ElasticLoadBalancingV2\ElasticLoadBalancingV2Client;
 use Aws\Route53\Route53Client;
 use Aws\Ssm\SsmClient;
+use GuzzleHttp\Client as GuzzleClient;
 
 /**
  * Builds AWS SDK clients from the credentials/settings resolved by Config\Settings.
@@ -58,6 +59,16 @@ final class ClientFactory
             'version' => 'latest',
             'credentials' => $route53Credentials,
         ] + $this->sslOptions());
+    }
+
+    /** Cloudflare isn't an AWS service -- a plain HTTP client with the token/CA bundle already set. */
+    public function cloudflare(string $apiToken): GuzzleClient
+    {
+        return new GuzzleClient([
+            'base_uri' => 'https://api.cloudflare.com/client/v4/',
+            'headers' => ['Authorization' => "Bearer {$apiToken}"],
+            'verify' => $this->caBundlePath ?? true,
+        ]);
     }
 
     private function baseConfig(): array

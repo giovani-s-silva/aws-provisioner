@@ -164,11 +164,15 @@ return [
     // Leave empty to skip requesting any certificate (e.g. the domain isn't ready at your
     // DNS provider yet, or TLS will be handled elsewhere, like CloudFront) — the load balancer
     // above still gets provisioned with just the HTTP listener, no HTTPS.
-    // 'dnsProvider' picks where each domain gets validated. Only 'route53' is implemented
-    // today — the domain MUST already exist as a Hosted Zone there (this tool doesn't
-    // register domains or move DNS delegation, that's always manual, outside AWS).
-    // 'cloudflare' is a reserved value for when that second option gets implemented.
+    // 'dnsProvider' picks where each domain gets validated -- 'route53' or 'cloudflare'.
+    // Either way, the domain MUST already exist there (Hosted Zone / zone) — this tool
+    // doesn't register domains or move DNS delegation, that's always manual, outside AWS.
+    // 'cloudflare' needs CLOUDFLARE_API_TOKEN set in .env (see .env.example). Mixing
+    // providers across domains is fine -- each entry picks its own independently. Each
+    // domain also gets its own ACM certificate, never one shared across domains -- a
+    // validation problem on one domain then can't stall the others.
     'acmDomains' => [
         // 'example.com' => ['dnsProvider' => 'route53', 'subdomain' => '*'],
+        // 'example.net' => ['dnsProvider' => 'cloudflare', 'subdomain' => '*'],
     ],
 ];

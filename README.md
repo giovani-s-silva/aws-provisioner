@@ -13,7 +13,7 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `SubnetProvisioner` / `RouteTableProvisioner` — idempotent, includes the Internet Gateway route for public subnets
 - [x] Unified CLI (`bin/provision.php`) orchestrating the network layer in the right order, with step selection and `--dry-run`
 - [x] `LoadBalancerProvisioner` — ALB, target group, HTTP->HTTPS redirect, optional sticky sessions (`loadBalancer.stickiness` in `config/settings.php`), idempotent
-- [x] `CertificateProvisioner` / `Route53DnsProvider` — requests one ACM certificate per domain (never a single certificate shared across domains, so a validation problem on one can't stall the others) and creates its DNS validation record; every issued certificate attaches to the ALB's HTTPS listener via SNI, so multiple unrelated domains can point at the same load balancer. Verified end-to-end against a real domain, including Route 53 credentials from a separate AWS account.
+- [x] `CertificateProvisioner` — requests one ACM certificate per domain (never a single certificate shared across domains, so a validation problem on one can't stall the others) and creates its DNS validation record via `Route53DnsProvider` or `CloudflareDnsProvider` (`acmDomains.<domain>.dnsProvider`, mix and match freely per domain); every issued certificate attaches to the ALB's HTTPS listener via SNI, so multiple unrelated domains — even across different DNS providers — can point at the same load balancer. Verified end-to-end against real domains, including Route 53 credentials from a separate AWS account.
 - [x] Tier names (`web`, `db`, or however many/whatever you rename them to) are derived from `network.tiers` in `config/settings.php` instead of hardcoded — `TierConsistencyChecker` warns if a tier is missing from `securityGroups`/`networkAcls`/`routeTables`, or if one of those has an entry for a tier that doesn't exist
 - [x] `LaunchTemplateProvisioner` / `AutoScalingGroupProvisioner` — EC2 instances behind the target group, managed by an Auto Scaling Group (`autoScaling.enabled`), attached directly via `TargetGroupARNs` so instances register/deregister automatically as they launch or terminate. The AMI is resolved automatically (always the latest one, via a public SSM parameter) from `compute.osFamily`, or you can bring your own via `compute.amiId`. The default runtime (`compute.runtime`) installs Apache + PHP as a working smoke test for the target group's health check — not meant to be a production stack as-is; set `runtime.type` to `'none'` when `amiId` points to an already-configured image. `minSize`/`maxSize` default to 1/1 on purpose, to avoid unexpected scaling costs — no CPU/request-based scaling policies are configured, that's a deliberate manual step for later.
 - [ ] Alternative network profiles (no public IPv4 / CloudFront in front of a private network)
@@ -25,7 +25,7 @@ Actively under construction. Nothing here should be considered production-ready 
 - PHP >= 8.1
 - Composer 2.x
 - An AWS account (a new/test account is recommended while the project is under development)
-- Only if you want the Load Balancer + ACM certificate step: a domain already set up as a Route 53 Hosted Zone. This tool does not register domains or move DNS delegation — that's always a manual, one-time step outside AWS. Leave `acmDomains` empty in `config/settings.php` to skip this step entirely and provision just the network.
+- Only if you want the Load Balancer + ACM certificate step: a domain already set up as a Route 53 Hosted Zone, or a zone on Cloudflare (`acmDomains.<domain>.dnsProvider`). This tool does not register domains or move DNS delegation — that's always a manual, one-time step outside AWS. Leave `acmDomains` empty in `config/settings.php` to skip this step entirely and provision just the network.
 
 ## Installation
 
@@ -186,6 +186,8 @@ If `AWS_ROUTE53_ACCESS_KEY_ID`/`AWS_ROUTE53_SECRET_ACCESS_KEY` in `.env` point t
 
 > Why the extra `ec2:Describe*` actions (`DescribeAccountAttributes`, `DescribeAddresses`, `DescribeNetworkInterfaces`, etc.)? `CreateLoadBalancer` performs several read-only EC2 checks internally (account limits, existing network interfaces, VPC peering, ClassicLink) before creating anything — these show up as separate `AccessDenied` errors one at a time if missing. This list matches AWS's own `ElasticLoadBalancingFullAccess` managed policy, minus the parts unrelated to this tool (Cognito authentication on the ALB, Outposts CoIP pools).
 
+For domains validated via `'dnsProvider' => 'cloudflare'` instead of Route 53, there's no AWS IAM policy involved at all — set `CLOUDFLARE_API_TOKEN` in `.env` instead, created at Cloudflare under **My Profile → API Tokens → Create Token**, with **Zone / DNS / Edit** permission scoped to the zones (domains) this project needs (not the legacy Global API Key, which grants full account access).
+
 Step by step in the AWS Console: **IAM → Users → Create user** → no console access, just "Access key - Programmatic access" → **Attach policy directly** → paste the JSON above as an inline policy → generate the Access Key and paste it into `.env`.
 
 ## Credential security
@@ -204,7 +206,7 @@ php bin/provision.php --dry-run     # prints the steps that would run, without c
 
 Steps implemented so far, in execution order: `vpc`, `internet-gateway`, `security-groups`, `network-acls`, `subnets`, `route-tables`, `certificate` (only registered when `acmDomains` isn't empty), `load-balancer` (only registered when `loadBalancer.enabled` is true), `auto-scaling` (only registered when `autoScaling.enabled` is true — requires `loadBalancer.enabled`).
 
-The `certificate` step requests the ACM certificate and creates its DNS validation CNAME in Route 53, but validation isn't instant — AWS can take several minutes to confirm it. Run the step again later to check on it; once it reports `ISSUED`, the next run of the `load-balancer` step attaches the HTTPS listener automatically. Requires the domain to already exist as a Route 53 Hosted Zone (see "Required IAM permissions" above).
+The `certificate` step requests one ACM certificate per configured domain and creates its DNS validation CNAME at that domain's `dnsProvider` (Route 53 or Cloudflare), but validation isn't instant — AWS can take several minutes to confirm it. Run the step again later to check on it; once a certificate reports `ISSUED`, the next run of the `load-balancer` step attaches it to the HTTPS listener automatically (all issued certificates attach via SNI, so multiple domains can share the same load balancer). Requires the domain to already exist as a Route 53 Hosted Zone or Cloudflare zone (see "Required IAM permissions" above).
 
 The `auto-scaling` step creates a Launch Template and an Auto Scaling Group attached to the load balancer's target group. Changing `compute` settings (a new `amiId`, a different `instanceType`) and running the step again creates a new Launch Template *version* and sets it as default — existing instances keep running as they are; only new ones (scale-out, replacements) pick up the change. To roll it out to already-running instances, trigger an EC2 instance refresh yourself (not something this tool automates).
 
@@ -222,7 +224,7 @@ src/
 ├── Network/              VPC, Security Groups, ACLs, Subnets, Route Tables
 ├── LoadBalancer/         Application Load Balancer
 ├── Compute/              AMI resolution, User Data, Launch Template, Auto Scaling Group
-├── Certificates/         ACM + Route 53 DNS validation
+├── Certificates/         ACM + Route 53/Cloudflare DNS validation
 └── Provisioning/         Orchestrates the execution order between the steps above
 ```
 

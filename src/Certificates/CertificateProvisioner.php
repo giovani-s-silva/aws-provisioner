@@ -71,7 +71,7 @@ final class CertificateProvisioner
         $result = $this->acm->describeCertificate(['CertificateArn' => $certificateArn]);
 
         $records = [];
-        foreach ($result['Certificate']['DomainValidationOptions'] as $option) {
+        foreach ($result['Certificate']['DomainValidationOptions'] ?? [] as $option) {
             if (!isset($option['ResourceRecord'])) {
                 continue;
             }

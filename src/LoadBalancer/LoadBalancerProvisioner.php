@@ -168,6 +168,26 @@ final class LoadBalancerProvisioner
         ]);
     }
 
+    /**
+     * Attaches an additional certificate to the HTTPS listener via SNI, alongside whatever
+     * ensureHttpsListener() already set as the default. Safe to call again -- AWS treats
+     * adding a certificate that's already attached as a no-op, not an error.
+     */
+    public function addListenerCertificate(string $loadBalancerArn, string $certificateArn): void
+    {
+        $listener = $this->findListenerByPort($loadBalancerArn, 443);
+        if ($listener === null) {
+            throw new \RuntimeException(
+                'No HTTPS listener found on this load balancer yet -- call ensureHttpsListener() first.'
+            );
+        }
+
+        $this->elb->addListenerCertificates([
+            'ListenerArn' => $listener['ListenerArn'],
+            'Certificates' => [['CertificateArn' => $certificateArn]],
+        ]);
+    }
+
     /** @param string[] $instanceIds */
     public function registerTargets(string $targetGroupArn, array $instanceIds): void
     {

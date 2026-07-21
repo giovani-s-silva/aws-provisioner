@@ -368,13 +368,29 @@ if ($loadBalancerPreferences['enabled'] ?? false) {
         );
         $loadBalancerProvisioner->ensureHttpToHttpsRedirect($loadBalancerArn);
 
-        $rootDomain = array_key_first($acmDomains);
-        if ($rootDomain !== null) {
+        // One ACM certificate per domain (not one shared multi-domain certificate) on purpose --
+        // a validation/renewal problem on one domain then can't stall the others. All issued
+        // certificates attach to the same HTTPS listener; the ALB picks the right one per
+        // request via SNI.
+        $issuedCertificateArns = [];
+        foreach (array_keys($acmDomains) as $rootDomain) {
             $certificateArn = $context->certificateArns[$rootDomain]
                 ?? $certificateProvisioner->findByDomain($rootDomain);
 
             if ($certificateArn !== null && $certificateProvisioner->status($certificateArn) === 'ISSUED') {
-                $loadBalancerProvisioner->ensureHttpsListener($loadBalancerArn, $targetGroupArn, $certificateArn);
+                $issuedCertificateArns[] = $certificateArn;
+            }
+        }
+
+        if ($issuedCertificateArns !== []) {
+            $loadBalancerProvisioner->ensureHttpsListener(
+                $loadBalancerArn,
+                $targetGroupArn,
+                array_shift($issuedCertificateArns),
+            );
+
+            foreach ($issuedCertificateArns as $certificateArn) {
+                $loadBalancerProvisioner->addListenerCertificate($loadBalancerArn, $certificateArn);
             }
         }
 

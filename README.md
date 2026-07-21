@@ -13,7 +13,7 @@ Actively under construction. Nothing here should be considered production-ready 
 - [x] `SubnetProvisioner` / `RouteTableProvisioner` — idempotent, includes the Internet Gateway route for public subnets
 - [x] Unified CLI (`bin/provision.php`) orchestrating the network layer in the right order, with step selection and `--dry-run`
 - [x] `LoadBalancerProvisioner` — ALB, target group, HTTP->HTTPS redirect, optional sticky sessions (`loadBalancer.stickiness` in `config/settings.php`), idempotent
-- [x] `CertificateProvisioner` / `Route53DnsProvider` — requests the ACM certificate and creates its DNS validation record; the HTTPS listener is attached automatically once the certificate is ISSUED. Verified end-to-end against a real domain, including Route 53 credentials from a separate AWS account.
+- [x] `CertificateProvisioner` / `Route53DnsProvider` — requests one ACM certificate per domain (never a single certificate shared across domains, so a validation problem on one can't stall the others) and creates its DNS validation record; every issued certificate attaches to the ALB's HTTPS listener via SNI, so multiple unrelated domains can point at the same load balancer. Verified end-to-end against a real domain, including Route 53 credentials from a separate AWS account.
 - [x] Tier names (`web`, `db`, or however many/whatever you rename them to) are derived from `network.tiers` in `config/settings.php` instead of hardcoded — `TierConsistencyChecker` warns if a tier is missing from `securityGroups`/`networkAcls`/`routeTables`, or if one of those has an entry for a tier that doesn't exist
 - [x] `LaunchTemplateProvisioner` / `AutoScalingGroupProvisioner` — EC2 instances behind the target group, managed by an Auto Scaling Group (`autoScaling.enabled`), attached directly via `TargetGroupARNs` so instances register/deregister automatically as they launch or terminate. The AMI is resolved automatically (always the latest one, via a public SSM parameter) from `compute.osFamily`, or you can bring your own via `compute.amiId`. The default runtime (`compute.runtime`) installs Apache + PHP as a working smoke test for the target group's health check — not meant to be a production stack as-is; set `runtime.type` to `'none'` when `amiId` points to an already-configured image. `minSize`/`maxSize` default to 1/1 on purpose, to avoid unexpected scaling costs — no CPU/request-based scaling policies are configured, that's a deliberate manual step for later.
 - [ ] Alternative network profiles (no public IPv4 / CloudFront in front of a private network)
@@ -97,7 +97,8 @@ The policy below covers what is implemented so far (VPC, Internet Gateway, Secur
                 "elasticloadbalancing:DescribeListeners",
                 "elasticloadbalancing:CreateListener",
                 "elasticloadbalancing:RegisterTargets",
-                "elasticloadbalancing:ModifyTargetGroupAttributes"
+                "elasticloadbalancing:ModifyTargetGroupAttributes",
+                "elasticloadbalancing:AddListenerCertificates"
             ],
             "Resource": "*"
         },
